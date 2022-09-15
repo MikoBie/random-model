@@ -1,0 +1,412 @@
+---
+title: "Study 1"
+output:
+  bookdown::html_document2:
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+    number_sections: no
+---
+
+
+```{r setup-env, include=FALSE}
+# Globals
+ROOT <- here::here()
+HERE <- file.path(ROOT, "notebooks")
+DATA <- file.path(ROOT, "data")
+FIG <- file.path(ROOT, 'fig')
+```
+
+```{r setup, include=FALSE}
+## Load necessary packages
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+library(broom)
+library(kableExtra)
+library(mgcv)
+library(MuMIn)
+library(itsadug)
+
+## Set ggplot theme
+theme_set(theme_classic())
+COLORS <- RColorBrewer::brewer.pal(8, "Set1")
+options(
+    ggplot2.discrete.color = COLORS,
+    ggplot2.discrete.fill  = COLORS
+)
+```
+
+In the first study, during 15 minutes long procedure participants were asked to
+produce a binary series of 120 elements and to compare 64 pairs of 7-elements
+long binary series. They were recruited on *Prolific* and redirected to
+*pavlovia.org* where the experiment was run using custom software written in
+*JavaScript*^[It is available on GitHub under MIT License
+https://gitlab.pavlovia.org/MikoBie/rantool2]. The experiment was marked as
+desktop computers only because it required the usage of the physical keyboard
+(the procedure would not launch on mobile devices).
+
+### Procedure and design
+
+The experiment followed a factorial design with one between-subject variable –
+visibility of the previously generated elements. Participants were assigned to
+one of the two experimental conditions based on their unique *id* number from
+*Prolific*. People with odd *id* numbers entered the *visible* condition in which the
+last 7 elements of produced series were visible while others were assigned to
+the *invisible* condition in which they did not see any of the previously
+generated elements. Within each condition, half of the participants first
+completed the comparison task and afterward the generation task. For the other
+half of the subjects the procedure was reversed, they first completed the random
+series generation task and afterward the comparison task. Regardless of the
+tasks' order, in the random series production part, the software displayed a red
+square every 1.25 s for .75 s. Participants were instructed to imagine a fair
+coin toss and report the outcome by pressing either the 'comma' or 'dot' key on
+the keyboard (see Figure 2).
+
+In the comparison task, participants were asked to compare 64 pairs of
+7-elements long series of coin flips. The experiment was run in Polish, where
+heads is orzeł and tails is reszka. Therefore, the acronyms were O for heads and
+R for tails. For each couple, they had 5 seconds to decide which series is more
+random. The series differ only by the last element, for example, the displayed
+series were ORRRROR with ORRRROO. To minimize the effect of the side, we
+randomly displayed series ending with O either on the right or left side of the
+screen. Moreover, the order of the displayed series was also assigned at random.
+Therefore, there were no two participants that saw stimuli in the same order.
+
+![Figure 2. Flow chart of Study 1 design. Participants were assigned at random to either invisible or visible experimental conditions. In both conditions, they were presented with a red square every 1.25 s for 0.75 s. In the visible condition, the last seven elements of generated series were displayed on the screen. After the generation phase, in both conditions, participants compared 64 pairs of 7-elements long series of coin flips. For each couple, they had 5 seconds to decide which series is more random. The series differ only by the last digit, for example, the displayed series were ORRRROR with ORRRROO.](../scheme/figure-2.png)
+
+```{r read-data, message=FALSE}
+## Read demographic data from Prolific
+ddf <- read.csv(file.path(DATA, 'study1_demographics.csv')) %>%
+  select(-X, -session_id) %>%
+  rename(id = participant_id)
+
+
+## Read data from comparison experiment
+cdf <- read.csv(file.path(DATA, 'compare_df.csv')) %>%
+  group_by(id, file_name) %>%
+  summarise(correctness = sum(correctness),
+            len = n()) %>%
+  ungroup() %>%
+  mutate(correctness = correctness/len)
+
+## Read data from random series production experiment
+rdf_wide <- read.csv(file.path(DATA, 'study1_random_cmx.csv')) %>%
+  rename('id' = X0,
+         'age' = X1,
+         'sex' = X2,
+         'condition_order' = X3,
+         'condition_visible' = X4,
+         'file_name' = X5) %>%
+  left_join(cdf) %>%
+  left_join(ddf %>% select(-age), by = 'id') %>%
+  filter(status == 'APPROVED') %>%
+  filter(time_taken > 454) %>%
+  filter(time_taken < 901) %>%
+  mutate(condition_visible = as.factor(condition_visible),
+         condition_order = as.factor(condition_order)) %>%
+  distinct(id, .keep_all = TRUE)
+
+## Transform random series production data into long format
+rdf_wide <- rdf_wide %>%
+  select(id, age, sex, condition_order, condition_visible, file_name, cmx, cmx_mean, cmx_sd, cmx_rn7, correctness) %>%
+  mutate(cmx_rn7 = str_extract_all(cmx_rn7, pattern = '\\d\\.\\d*')) 
+
+rdf7 <- rdf_wide %>%
+  unnest(cmx_rn7) %>%
+  group_by(id, file_name) %>%
+  mutate(ids = 1:n(),
+         cmx_rn7 = as.numeric(cmx_rn7))
+
+## Wide format data
+rdf_wide <- rdf_wide %>%
+  select(id, age, sex, condition_order, condition_visible, file_name, cmx, cmx_mean, cmx_sd, correctness) 
+
+```
+
+
+```{r descriptive-statistics}
+## Descriptive statistics
+(rangeAge = range(rdf_wide$age))
+(meanAge = mean(rdf_wide$age))
+(sdAge = sd(rdf_wide$age))
+(countSex = table(rdf_wide$sex))
+```
+
+### Participants
+
+A total number of 197 participants completed the study. They were rewarded with
+the average rate £13.55 per hour as payment on *Prolific* for their time. However,
+after a close examination of the completion times and lengths of the produced
+series, we decided to exclude some of the records. First, we removed from
+further analysis records of people who did not follow the task scrupulously and
+produced significantly shorter series than others. Therefore, observations that
+were shorter than the typical length of the series, that is, 10% of records with
+the shortest series (those with less than 103 elements). Based on this
+criterion, we removed 19 records. Second, we removed observations with
+unrealistic times of completion of the whole study (both the random series
+generation and comparison tasks), that is, 10% of the shortest response time
+(below 7 minutes and 30 seconds) and responses that extended the assumed maximum
+completion time (15 minutes). Based on this criterion, we removed 38
+observations.
+
+Finally, we had 150 (91 males) participants aged from 18 to 61 (M = 22.4, SD =
+5.63). They were assigned to one of the experimental conditions (70 to the
+visible condition) based on their *Prolific* *id* number. The procedure was approved
+by the ethics committee of Robert Zajonc Institute for Social Studies at the
+University of Warsaw. All participants gave informed consent before taking part
+in the study.
+
+### Data preprocessing
+
+Although we removed observations with significantly shorter series the length of
+the series still varied between 103 and 120 elements (Median = 117).
+
+We used Python ‘pybdm’^[It is a Python package implementing Coding Theorem and
+Block Decomposition methods for estimating algorithmic complexity (Soler-Toscano
+et al., 2014; Zenil et al., 2018). It is available as a standard package through
+PyPI https://pypi.org/project/pybdm/.] library to estimate the algorithmic
+complexity of the series. All other analyses were performed using R language (R
+Core Team, 2021) with 'mgcv' package for estimating Generalized Additive Mixed
+Models (GAMMs) (Wood, 2017).
+
+For each participant, we computed an overall algorithmic complexity of the
+entire sequence as well as vectors of complexity estimates in a rolling window
+of length 7. The former was calculated as the average of the algorithmic
+complexity of chunks of length 11. That was because the algorithmic complexity
+has been only experimentally calculated for strings no longer than 12 elements
+(Soler-Toscano et al. 2014). Although with the usage of the Block Decomposition
+Method (Zenil et al. 2018) it is possible to approximate it for longer strings
+for our data this measure showed smaller interpersonal variance than the average
+of the algorithmic complexity of chunks of length 11. That was because,
+algorithmic complexity calculated with the method proposed by Zenil et al.
+(2018) for human-generated data tends to approach maximum value. Both measures,
+the overall algorithmic complexity and the rolling algorithmic complexity were
+normalized (using the method described in Zenil et al., 2018). Normalized
+algorithmic complexity ranges from 0 to 1 where 0 stands for the simplest
+possible object (a constant series filled with a single symbol) and 1 for the
+most complex object of a given size.
+
+Additionally, for each participant, we computed the correctness index from the
+comparison task. It was a simple ratio of correctly assessed pairs to all
+displayed pairs.
+
+```{r nonparametric-tests}
+## Visible and invisible manipulation
+wilcox.test(cmx_mean ~ condition_order, data = rdf_wide)
+wilcox.test(correctness ~ condition_order, data = rdf_wide)
+
+## Order manipulation:
+## 0 -- generation first, comparison second
+## 1 -- compariosn first, generation second
+wilcox.test(cmx_mean ~ condition_visible, data = rdf_wide)
+wilcox.test(correctness ~ condition_visible, data = rdf_wide)
+
+## Compute Wilcoxon Rank Test between order and visibility
+c(
+    list(Condition_order = rdf_wide ),
+    split(rdf_wide, rdf_wide$condition_order)
+)%>%
+    map2(names(.), ~ {
+        mutate(tidy(wilcox.test(cmx_mean ~ condition_visible, data = .x, exact = FALSE)), condition = .y, .before = 1L)
+    }) %>%
+    bind_rows %>%
+    select(
+        Condition = condition,
+        W = statistic,
+        p = p.value
+    )
+
+```
+### Results and Discussion
+
+Before testing our main hypothesis, we investigated whether the order affected
+the results of both tasks. First, we used a non-parametric test to assess if the
+distributions of the algorithmic complexity were systematically different
+between groups of participants who completed the tasks in different orders. The
+Wilcoxon Rank Sum test revealed that the main difference was not significant, W
+= 2621, p = .483. Second, we used a non-parametric test to investigate whether
+the distributions of the correctness measure were systematically affected by the
+order of the tasks. Similarly, the Wilcoxon Rank Sum test revealed that the main
+difference was not significant, W = 2590, p = .49. Therefore, there was no
+reason to explore these differences in further analysis.
+
+To test the hypothesis of the effect of the visibility of the last 7 digits of
+the produced series on the average algorithmic complexity of human-generated
+series, we also used a non-parametric test to assess the differences in the
+distributions. The Wilcoxon Rank Sum test revealed that the main difference was
+not significant, W = 2901, p = .705.
+
+```{r model-gamm}
+## Create dummy variable for contrasts
+rdf7$condition0 <- as.ordered(rdf7$condition_visible)
+contrasts(rdf7$condition0) <- "contr.treatment"
+
+## Define a generalized additive mixed model
+gamm1 <- gamm(cmx_rn7 ~ 
+               condition0 +
+               s(ids, k = 6) +
+               s(ids, k = 4, by = condition0),
+              random = list(id =~ 1, id =~ ids),
+              method = 'REML',
+              data = rdf7)
+
+## Print out summary of gam model
+summary(gamm1$gam)
+gam.check(gamm1$gam)
+concurvity(gamm1$gam)
+
+## Print out summary of lme model
+summary(gamm1$lme)
+
+## Compute conditional and marginal coefficient of terminnation for mixed models
+r.squaredGLMM(gamm1$lme)
+```
+
+In a more detailed analysis that allowed for testing Hypotheses 1, we used the
+rolling algorithmic complexity. We estimated the Generalized Additive Mixed
+Model. It allowed for investigation of both linear and non-linear trends in the
+rolling algorithmic complexity. As a dependent variable, we had normalized
+algorithmic complexity. The mean difference between experimental conditions was
+represented with a single fixed parametric effect with the invisible condition
+used as the reference group in dummy coding. For non-parametric effects, we
+entered a non-linear difference in trends of algorithmic complexity over time
+between invisible and visible conditions (with the invisible condition being the
+reference) and a non-linear trend of algorithmic complexity over time.
+Additionally, we used subject-level random intercepts and slopes for the time
+trend to model systematic between-subjects differences. The goodness-of-fit of
+the model was assessed with marginal R2 (variance retained by fixed effects
+only) and condition R2 (variance retained by the model as such) as proposed by
+Nakagawa et al. (2017).
+
+The fitted model explained 42.12% of the variance with fixed effects reproducing
+2.08% (see Table 1). The non-linear trend of algorithmic complexity over time
+was significant (cf. Figure 3), F(edf = 4.165, Ref. df = 4.165) = 15.561, p <
+.0001. Similarly, the non-linear difference between the invisible and visible
+conditions was significant, F(edf = 2.457, Ref. df = 2.457, p = .028. Moreover,
+the linear difference between the conditions was also significant, t(16279) =
+2.461, p = .013. The visibility of the last 7 generated elements had the biggest
+impact at the beginning of the trend curves. In the invisible condition, the
+effect of the fatigue is much steeper than in the visible condition. Afterward,
+both curves stabilize at a similar level (compare Figure 3).
+
+This indicates that when the cognitive load on the working memory storage
+component is reduced the decrease in the performance in the random-like series
+generation task is slower. In other words, people can maintain a high level of
+randomness for a longer time when they do not have to solemnly depend on working
+memory. That is because both components of working memory rely on the same
+limited-capacity domain-general central attentional controller (Cowan, 1999).
+Therefore, reducing the load on the storage component allows for allocating more
+cognitive resources to the processing component (Cowan, 2009). However, it does
+not improve the randomness of the subsequences but rather enables performance on
+the same level for a longer time (compare Figure 3). Consequently, it allows for
+more accurate reproduction of active schema and better randomness judgments.
+Although the dynamic of the generation process is affected by the visibility of
+the past choices the overall randomness of the series is intact in-between
+conditions. This might suggest that in line with Schulz et al. (2021) results
+people’s inability to produce random series might be attributed to what they
+consider random and try to reproduce. Therefore, the individual differences in
+the ability to produce random-like series might be associated with the ability
+to recognize more complex series.
+
+
+```{r plot-gamm, include = TRUE, fig.cap = "Solid lines present trend curves for normalized rolling algorithmic complexity and dashed lines depict the average rolling algorithmic complexity as a function of experimental conditions. For each participant, we computed vectors of complexity estimates in a rolling window of length 7. Although the experimental task asked for the creation of 120-long series, the length still varied. Therefore, the uncertainty of both the trend curve and the average rolling algorithmic complexity increased around 113th element. Both, the non-linear (F(edf = 2.457, Ref. df = 2.457, p = .028) and linear difference (t(16279) = 2.461, p = .013) between the invisible and visible conditions, were significant. The visibility of the last 7 generated elements had the biggest impact at the beginning of the trend curves. In the invisible condition, the effect of the fatigue is much steeper than in the visible condition. Afterward, both curves stabilize at a similar level."}
+## Create data set with estimated non-linear trend and standard errors
+data_plt4 <- get_predictions(gamm1$gam,
+                        cond = list(ids = seq(min(rdf7$ids),
+                                              max(rdf7$ids),
+                                              length = 120),
+                                    condition0 = c('visible', 'invisible')),
+                        se = TRUE,
+                        print.summary = FALSE)
+  
+## Temp table with average algorithmic complexity                              
+temp <- rdf7 %>%
+  group_by(ids, condition_visible) %>%
+  summarise(cmx = mean(cmx_rn7))
+
+## Create an object for the plot of the trend curve
+figure1 <- data_plt4 %>%
+  ggplot(aes(x = ids, y = fit, color = condition0, group = condition0)) +
+  geom_line() +
+  geom_line(data = temp, aes(x = ids, y = cmx, color = condition_visible, group = condition_visible), alpha = .2, linetype = 'dashed') +
+  ylab("Normalized Algorithmic Complexity") +
+  xlab("Time step") +
+  scale_color_discrete(name = 'Last 7 elements:') +
+  xlim(0,115) +
+  theme(legend.position = 'bottom')
+
+figure1
+
+figure1 %>%
+  ggsave(filename = file.path(FIG,"figure_1.png"),
+       device = "png",
+       dpi = 300,
+       height = 4.5,
+       width = 6)
+
+```
+
+```{r model-wls}
+## Compute weights
+rdf_wide <- rdf_wide %>%
+  mutate(wgt = 1/(cmx_sd)^2) %>%
+  filter(wgt != Inf & !is.na(correctness))
+
+## Define the model
+model_wls <- lm(cmx_mean ~ correctness, data = rdf_wide, weights = wgt)
+
+## Summarise the model output
+summary(model_wls)
+
+## Compute confidence intervals
+confint(model_wls)
+```
+
+To test H2, we used a Weighted Least Squares linear regression model (weights
+were invertedly proportional to the variance of the algorithmic complexity at
+the level of participant). As a dependent variable we had the overall
+(normalized) algorithmic complexity and as the predictor the correctness
+measure. The model was significant, F(1,146) = 15.77, p < .001. The correctness
+measure explained about 9.13% of the algorithmic complexity of the series. With
+a .1 point increase of the correctness index there was a .08 (95% CI [.04 .12]
+increase of the algorithmic complexity of the series (compare Figure 4). This
+result supports the hypothesis about the positive relationship between the
+capacity for recognition of more complex series and the ability to produce
+random-like series.
+
+```{r plot-wls, fig.cap='The trend curve for the relationship between normalized overall algorithmic complexity and the correctness measure, R2 = 9.13%.'}
+## Add fitted values to the data frame
+rdf_wide$predict <- predict(model_wls)
+
+## Create the figure
+figure2 <- rdf_wide %>% 
+  ggplot(aes( x = correctness, y = predict )) +
+  geom_line() +
+  geom_point(aes(y = cmx_mean), alpha = .1, position='jitter') +
+  ylab("Normalized Overall Algorithmic Complexity") +
+  xlab("Correctness Measure")
+
+figure2
+
+## Save the figure to the file
+figure2 %>%
+  ggsave(filename = file.path(FIG,"figure_2.png"),
+       device = "png",
+       dpi = 300,
+       height = 4.5,
+       width = 6)
+```
+
+Taken together, the results of Study 1 support H1 and H2. The visibility of the
+last elements of the generated series affected the dynamic of the generation
+process. Reducing the cognitive load on the working memory storage component
+allows for the allocation of more attentional resources to the processing
+component. Consequently, people can maintain the initial level of randomness for
+a longer time. However, this effect does not affect the overall algorithmic
+complexity of the series. That is because people's performance in the random
+generation task is not limited by the allocation of attentional resources to
+maintaining active past choices but rather by the complexity of representations
+of the random process they nourish – schemas of the random process they can
+activate – and the capacity for randomness judgment.
+

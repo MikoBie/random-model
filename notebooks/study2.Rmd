@@ -1,0 +1,264 @@
+---
+title: "Study 2"
+output:
+  bookdown::html_document2:
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+    number_sections: no
+---
+
+```{r setup-env, include=FALSE}
+# Globals
+ROOT <- here::here()
+HERE <- file.path(ROOT, "notebooks")
+DATA <- file.path(ROOT, "data")
+FIG <- file.path(ROOT, 'fig')
+```
+
+```{r setup, include=FALSE}
+## Load necessary packages
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+library(broom)
+library(kableExtra)
+library(mgcv)
+library(MuMIn)
+library(itsadug)
+library(quantreg)
+library(ggpubr)
+
+## Set ggplot theme
+theme_set(theme_classic())
+COLORS <- RColorBrewer::brewer.pal(8, "Set1")
+options(
+    ggplot2.discrete.color = COLORS,
+    ggplot2.discrete.fill  = COLORS
+)
+```
+
+## Study 2
+
+In the second study, during 30 minutes long procedure participants were asked to
+produce a binary series of 120 elements and to complete the working memory
+capacity test. Similar to Study 1, they were recruited on *Prolific* and
+redirected to *pavlovia.org* where the experiment was run using custom software
+written in *JavaScript*^[It is available on GitLab under MIT License
+https://gitlab.pavlovia.org/MikoBie/ComplexSpan]. The experiment was marked as
+desktop computers only because it required the usage of the physical keyboard
+(the procedure would not launch on mobile devices).
+
+### Procedure and design
+
+Although the experiment followed the correlational design we manipulated the
+order of the tasks. That is because both the random generation task and working
+memory capacity test are fatigue sensitive (see Biesaga, Talaga, & Nowak, 2021;
+Hopstaken et al. 2015). Therefore, half of the participants first completed the
+random series generation task and later the working memory capacity test while
+for others the procedure was reversed.
+
+Regardless of the tasks' order, the random series production part followed the
+same design as in the visible condition in Study 1 (see Figure 2). That is, the
+software displayed a red square every 1.25 s for .75s. Participants were
+instructed to imagine a fair coin toss every time they saw a red square and
+report the outcome by pressing either the 'comma' or 'dot' keys on the keyboard.
+
+For testing working memory capacity, we employed a dual task. We followed a
+procedure developed by Gronthier et al. (2015) from which we adopted the
+operation complex span task. Our implementation in JavaScript is based on the
+Python procedure developed by Lau et al. (2019).
+
+The main task in the working memory capacity test was to recall a string of
+letters in the correct order (see right panel of Figure 4). However, in-between
+each displayed letter (each letter was presented for .8s), participants were
+asked to correctly solve a simple math equation, for example, $(3 \times 8) –
+19$. The correct answers in all equations were limited to single digits. With
+each correct recall, the length of a string increased. The procedure ended with
+two consequent errors in recall.
+
+The main task – complex recall – was proceeded by several trials that were meant
+to familiarize the participants with every element of the main task. First,
+participants practiced the simple recall procedure (see left panel of Figure 5).
+They were simply asked to recall a string of letters displayed one after another
+(each letter was displayed for .8 s with .5 s intervals in-between letters).
+With two correct recalls the set of letters increased. The procedure ended with
+three errors on the string of the same length. Second, participants solved 10
+simple equations (the equations used in the trial were not later used in the
+main task). To complete operations practice, they had to solve at least 65% of
+the equations correctly. They got feedback after each equation whether they gave
+a correct answer (see middle panel of Figure 5). Third, participants practiced
+the complex recall procedure. Their task was to recall two-elements long strings
+(see right panel of Figure 5). Before each letter was displayed they had to
+solve a simple equation. The time for giving the correct answer for the simple
+equation was limited to the average time of the participant's response in the
+operations practice plus 2.5 standard deviations (compare Unswroth et al. 2005).
+If the participant failed to answer during this period the program counted it as
+a wrong answer and displayed equations until the correct answer was given. In
+the main task the time for giving the correct answer for the equation was also
+limited.
+
+![Figure 5. Flow chart of Working Memory Capacity test. The left panel depicts the stimuli displayed in the simple recall practice. Each letter was displayed for .8 s with .5 s intervals in-between. The middle panel shows the stimuli displayed in the operations practice. Participants saw 10 equations and after each answer they got feedback whether they solved it correctly. The right panel illustrates the main task. Participants were asked to recall displayed letters in the correct order. Before each letter they had to solve a simple equation. The time for giving the correct answer for the simple equation was limited to the average time of the participant’s response in the operations practice plus 2.5 standard deviations.](../scheme2/figure-5.png)
+
+```{r read-data, message=FALSE}
+## Read demographic data from Prolific
+ddf <- read.csv(file.path(DATA, 'study2_demographics.csv'))  
+
+## Read working memory results
+wm_df <- read.csv(file.path(DATA, 'wm_df.csv'))
+
+## Read data from random series production experiment
+rdf_wide <- read.csv(file.path(DATA, 'study2_random_cmx.csv'))  %>%
+  rename('id' = X0,
+         'age' = X1, 
+         'sex' = X2,
+         'condition' = X3) %>%
+  left_join(ddf) %>%
+  left_join(wm_df) %>% 
+  filter(correct_digits > .85) %>% 
+  filter(partial_correct_complex > 3 & partial_correct_complex < 11) %>%
+  mutate(condition = recode(condition, 'condition_generation_first' = 0, 'condition_generation_second' = 1),
+         condition = as.factor(condition))  %>%
+  select(id, age, sex, condition, cmx, cmx_rn7, time_taken, cmx_mean, cmx_sd) %>%
+  mutate(cmx_rn7 = str_extract_all(cmx_rn7, pattern = '\\d\\.\\d*')) %>%
+  left_join(wm_df) %>%
+  mutate(partial_correct_complex_z = (partial_correct_complex - mean(partial_correct_complex))/sd(partial_correct_complex))
+```
+
+
+```{r descriptive-statistics}
+## Descriptive statistics
+(rangeAge = range(rdf_wide$age))
+(meanAge = mean(rdf_wide$age))
+(sdAge = sd(rdf_wide$age))
+(countSex = table(rdf_wide$sex))
+(conditions = table(rdf_wide$condition))
+```
+
+### Participants
+
+A total number of 200 participants completed the study. They were rewarded with
+the average rate £13.72 per hour as payment on Prolific for their time. However,
+after a close examination of the data we decided to remove some records due to
+the following reasons:
+1.	the score in processing task in the complex recall was lower than 85% of
+correct answers. Based on this criterion we excluded 22 records.
+2.	the working memory capacity test results was suspiciously high or low.
+Therefore, we excluded 10% of the lowest results (below 4) and 10% of the
+highest results (above 10). Based on this criteria we excluded further 36
+records.
+
+Finally, we had 142 (104 males) participants aged from 18 to 55 (M = 26, SD =
+7.39). They were assigned at random to either condition in which the random
+generation task was proceeded (n = 71) or followed by the working memory
+capacity test (n = 71). The procedure was approved by the ethics committee of
+Robert Zajonc Institute for Social Studies at the University of Warsaw. All
+participants gave informed consent before taking part in the study.
+
+
+### Data preprocessing
+
+Although the participants were instructed to only press relevant keys when they
+see a red square some people pressed it less frequently than 120 times.
+Therefore, the length of the series varied between 103 and 120 elements (Median
+= 117).
+
+We used Python "pybdm"^[It is a Python package implementing Coding Theorem and
+Block Decomposition methods for estimating algorithmic complexity (Soler-Toscano
+et al., 2014; Zenil et al. 2018). It is available as a standard package through
+PyPI https://pypi.org/project/pybdm/] library to estimate the algorithmic
+complexity of the series. All other analyses were performed using R language (R
+Core Team, 2021).
+
+Similar to Study 1, for each participant, we computed an overall algorithmic
+complexity of the entire sequence. It was calculated as the average of the
+algorithmic complexity of chunks of length 11. The overall algorithmic
+complexity was normalized (using the method described in Zenil et al., 2018).
+Normalized algorithmic complexity ranges from 0 to 1 where 0 stands for the
+simplest possible object (a constant series filled with a single symbol) and 1
+for the most complex object of a given size.
+
+Additionally, for each participant, we computed the partial span score for
+complex recall. That is, we calculated the total number of correct recalls. This
+measure, unlike the absolute span score that gives participants credit only if
+they did not make mistake in the string of a given length, is more sensitive and
+allows for better discrimination between high and low-ability participants
+(Conway et al. 2005).
+
+
+
+### Results and discussion
+
+```{r nonparametric-tests}
+## Visible and invisible manipulation
+wilcox.test(cmx_mean ~ condition, data = rdf_wide)
+wilcox.test(partial_correct_complex ~ condition, data = rdf_wide)
+```
+
+Before testing our main hypothesis, we investigated whether the order affected
+the results of both tasks. First, we used a non-parametric test to assess if the
+distributions of algorithmic complexity were systematically different between
+groups of participants who completed the tasks in different orders. The Wilcoxon
+Rank Sum test revealed that the main difference was not significant, $W = 2603, p
+= .738$.
+
+Second, we used a non-parametric test to investigate whether the distributions
+of complex recall results were systematically affected by the order of the
+tasks. The Wilcoxon Rank Sum test revealed that the main difference was not
+significant, $W = 2193.5, p = .173$. Therefore, there was no reason to explore
+these differences in further analysis.
+
+```{r model-wls}
+## Define the model
+model_wls <- lm(cmx_mean ~ partial_correct_complex, weights = 1/(cmx_sd)^2, data = rdf_wide)
+
+## Summarise the model output
+summary(model_wls)
+
+## Compute confidence interavls
+confint(model_wls)
+```
+
+```{r plot-wls, fig.cap='The trend curve for the relationship between normalized overall algorithmic complexity and the working memory capacity, R2 = 6.29%.'}
+## Add fitted values to the data frame
+rdf_wide$predict <- model_wls$fitted.values
+
+
+## Create the figure
+figure4 <- rdf_wide %>% 
+  ggplot(aes(x = partial_correct_complex, y = predict)) +
+  geom_line() + 
+  geom_point(aes(y = cmx_mean), alpha = .1, position = 'jitter') + 
+  ylab("Normalized Overall Algorithmic Complexity") +
+  xlab("Working Memory Capacity")
+
+figure4
+
+## Save the figure to the file
+figure4 %>%
+  ggsave(filename = file.path(FIG,"figure_2.png"),
+       device = "png",
+       dpi = 300,
+       height = 4.5,
+       width = 6)
+```
+
+To test H3, we used a Weighted Least Squares linear regression model (weights
+were invertedly proportional to the variance of the algorithmic complexity at
+the level of participant). As a dependent variable we had the average
+(normalized) algorithmic complexity and as the predictor the partial span score
+for complex recall. The model was significant, F(1,140) = 10.47, p < .01. The
+results in the complex recall task explained about 6.29% of the algorithmic
+complexity of the series. With a 1-point increase of the partial span score,
+there was a .021 (95% CI [.008 .034] increase in the algorithmic complexity of
+the series. This result supports the hypothesis (H3) about the positive
+relationship between the capacity of working memory and the randomness of
+human-generated series. It shows that people who can maintain active longer
+series in their working memory at the same time are able to generate more
+complex series. That is because they examine longer sequences for regularities
+and consequently try to avoid them. Even if as Schulz et al. (2012) suggests in
+human-generated series some patterns repeat cyclically people with better
+working memory capacity can inhibit them longer. Therefore, the gaps between
+potentially reoccurring patterns are longer which in turn makes the sequence
+more random.
+
