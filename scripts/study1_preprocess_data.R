@@ -1,3 +1,4 @@
+#!/usr/bin/env Rscript --vanilla
 ## Load libraries
 library(tidyverse)
 
@@ -97,7 +98,7 @@ random_df %>%
 
 ## Create a randomness judgment data set and write it out to a file
 compare_df %>%
-  write.csv(file.path(DATA, 'compare_df.csv'), row.names = FALSE)
+  write.csv(file.path(DATA, 'study1_compare_df.csv'), row.names = FALSE)
 
 
 

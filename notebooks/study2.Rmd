@@ -98,14 +98,14 @@ a wrong answer and displayed equations until the correct answer was given. In
 the main task the time for giving the correct answer for the equation was also
 limited.
 
-![Figure 5. Flow chart of Working Memory Capacity test. The left panel depicts the stimuli displayed in the simple recall practice. Each letter was displayed for .8 s with .5 s intervals in-between. The middle panel shows the stimuli displayed in the operations practice. Participants saw 10 equations and after each answer they got feedback whether they solved it correctly. The right panel illustrates the main task. Participants were asked to recall displayed letters in the correct order. Before each letter they had to solve a simple equation. The time for giving the correct answer for the simple equation was limited to the average time of the participant’s response in the operations practice plus 2.5 standard deviations.](../scheme2/figure-5.png)
+![Figure 5. Flow chart of Working Memory Capacity test. The left panel depicts the stimuli displayed in the simple recall practice. Each letter was displayed for .8 s with .5 s intervals in-between. The middle panel shows the stimuli displayed in the operations practice. Participants saw 10 equations and after each answer they got feedback whether they solved it correctly. The right panel illustrates the main task. Participants were asked to recall displayed letters in the correct order. Before each letter they had to solve a simple equation. The time for giving the correct answer for the simple equation was limited to the average time of the participant’s response in the operations practice plus 2.5 standard deviations.](../fig/figure-5.png)
 
 ```{r read-data, message=FALSE}
 ## Read demographic data from Prolific
 ddf <- read.csv(file.path(DATA, 'study2_demographics.csv'))  
 
 ## Read working memory results
-wm_df <- read.csv(file.path(DATA, 'wm_df.csv'))
+wm_df <- read.csv(file.path(DATA, 'study2_wm_df.csv'))
 
 ## Read data from random series production experiment
 rdf_wide <- read.csv(file.path(DATA, 'study2_random_cmx.csv'))  %>%
@@ -236,7 +236,7 @@ figure4
 
 ## Save the figure to the file
 figure4 %>%
-  ggsave(filename = file.path(FIG,"figure_2.png"),
+  ggsave(filename = file.path(FIG,"figure-6.png"),
        device = "png",
        dpi = 300,
        height = 4.5,

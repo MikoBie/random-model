@@ -1,3 +1,4 @@
+#!/usr/bin/env Rscript --vanilla
 ## Load libraries
 library(tidyverse)
 library(jsonlite)
@@ -16,7 +17,7 @@ simple_recall <- tibble()
 complex_recall <- tibble()
 
 ## Load file files names grouped by the order condition. 
-conditions <- stream_in((file(file.path(RAW, 'conditions.json')))) %>%
+conditions <- stream_in((file(file.path(RAW, 'conditions.json'))), verbose = FALSE) %>%
   unnest_longer(condition_generation_first) %>%
   unnest_longer(condition_generation_second) %>%
   pivot_longer(names_to = 'condition',
@@ -130,7 +131,7 @@ complex_recall <- complex_recall %>%
 digit_answer %>%
   left_join(simple_recall) %>%
   left_join(complex_recall) %>%
-  write.csv(file.path(DATA, 'wm_df.csv'), row.names = FALSE)
+  write.csv(file.path(DATA, 'study2_wm_df.csv'), row.names = FALSE)
 
 ## Create a random generation data set and write it out to a file
 random_df %>% 

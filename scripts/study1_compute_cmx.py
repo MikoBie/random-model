@@ -21,7 +21,7 @@ def window_bdm(seq, bdm, k = 7, normalized = False, step = 1):
 
 ## Read data 
 random_df = pd.read_csv(DATA/'study1_random_df.csv')
-compare_df = pd.read_csv(DATA/'compare_df.csv')
+compare_df = pd.read_csv(DATA/'study1_compare_df.csv')
 
 ## Prepare data for algorithmic complexity computation
 df = random_df.reset_index().pivot_table( index = ['id', 'age', 'sex', 'condition', 'condition_vis', 'file_name'], columns = ['ids'] )

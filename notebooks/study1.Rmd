@@ -73,7 +73,7 @@ randomly displayed series ending with O either on the right or left side of the
 screen. Moreover, the order of the displayed series was also assigned at random.
 Therefore, there were no two participants that saw stimuli in the same order.
 
-![Figure 2. Flow chart of Study 1 design. Participants were assigned at random to either invisible or visible experimental conditions. In both conditions, they were presented with a red square every 1.25 s for 0.75 s. In the visible condition, the last seven elements of generated series were displayed on the screen. After the generation phase, in both conditions, participants compared 64 pairs of 7-elements long series of coin flips. For each couple, they had 5 seconds to decide which series is more random. The series differ only by the last digit, for example, the displayed series were ORRRROR with ORRRROO.](../scheme/figure-2.png)
+![Figure 2. Flow chart of Study 1 design. Participants were assigned at random to either invisible or visible experimental conditions. In both conditions, they were presented with a red square every 1.25 s for 0.75 s. In the visible condition, the last seven elements of generated series were displayed on the screen. After the generation phase, in both conditions, participants compared 64 pairs of 7-elements long series of coin flips. For each couple, they had 5 seconds to decide which series is more random. The series differ only by the last digit, for example, the displayed series were ORRRROR with ORRRROO.](../fig/figure-2.png)
 
 ```{r read-data, message=FALSE}
 ## Read demographic data from Prolific
@@ -83,7 +83,7 @@ ddf <- read.csv(file.path(DATA, 'study1_demographics.csv')) %>%
 
 
 ## Read data from comparison experiment
-cdf <- read.csv(file.path(DATA, 'compare_df.csv')) %>%
+cdf <- read.csv(file.path(DATA, 'study1_compare_df.csv')) %>%
   group_by(id, file_name) %>%
   summarise(correctness = sum(correctness),
             len = n()) %>%
@@ -339,7 +339,7 @@ figure1 <- data_plt4 %>%
 figure1
 
 figure1 %>%
-  ggsave(filename = file.path(FIG,"figure_1.png"),
+  ggsave(filename = file.path(FIG,"figure-3.png"),
        device = "png",
        dpi = 300,
        height = 4.5,
@@ -391,7 +391,7 @@ figure2
 
 ## Save the figure to the file
 figure2 %>%
-  ggsave(filename = file.path(FIG,"figure_2.png"),
+  ggsave(filename = file.path(FIG,"figure-4.png"),
        device = "png",
        dpi = 300,
        height = 4.5,
