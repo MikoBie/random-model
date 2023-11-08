@@ -109,7 +109,7 @@ rdf_wide <- read.csv(file.path(DATA, 'study1_random_cmx.csv')) %>%
 
 ## Transform random series production data into long format
 rdf_wide <- rdf_wide %>%
-  select(id, age, sex, condition_order, condition_visible, file_name, cmx, cmx_mean, cmx_sd, cmx_rn7) %>%
+  select(id, age, sex, condition_order, condition_visible, file_name, cmx, cmx_mean, cmx_sd, cmx_rn7, correctness, alternation_rate) %>%
   mutate(cmx_rn7 = str_extract_all(cmx_rn7, pattern = '\\d\\.\\d*'))
 
 rdf7 <- rdf_wide %>%
@@ -120,7 +120,7 @@ rdf7 <- rdf_wide %>%
 
 ## Wide format data
 rdf_wide <- rdf_wide %>%
-  select(id, age, sex, condition_order, condition_visible, file_name, cmx, cmx_mean, cmx_sd, correctness) 
+  select(id, age, sex, condition_order, condition_visible, file_name, cmx, cmx_mean, cmx_sd, correctness, alternation_rate) 
 
 ```
 
@@ -195,12 +195,14 @@ displayed pairs.
 ## Visible and invisible manipulation
 wilcox.test(cmx_mean ~ condition_order, data = rdf_wide)
 wilcox.test(correctness ~ condition_order, data = rdf_wide)
+wilcox.test(alternation_rate ~ condition_order, data = rdf_wide)
 
 ## Order manipulation:
 ## 0 -- generation first, comparison second
 ## 1 -- compariosn first, generation second
 wilcox.test(cmx_mean ~ condition_visible, data = rdf_wide)
 wilcox.test(correctness ~ condition_visible, data = rdf_wide)
+wilcox.test(alternation_rate ~ condition_visible, data = rdf_wide)
 
 ## Compute Wilcoxon Rank Test between order and visibility
 c(
