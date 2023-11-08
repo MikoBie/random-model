@@ -126,7 +126,7 @@ rdf_wide <- read.csv(file.path(DATA, 'study2_random_cmx.csv'))  %>%
 ```
 
 
-```{r descriptive-statistics}
+```{r descriptive-statistic}
 ## Descriptive statistics
 (rangeAge = range(rdf_wide$age))
 (meanAge = mean(rdf_wide$age))

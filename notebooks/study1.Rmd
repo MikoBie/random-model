@@ -109,12 +109,8 @@ rdf_wide <- read.csv(file.path(DATA, 'study1_random_cmx.csv')) %>%
 
 ## Transform random series production data into long format
 rdf_wide <- rdf_wide %>%
-  select(id, age, sex, condition_order, condition_visible, file_name, cmx, cmx_mean, cmx_sd, cmx_rn7, cmx_rn5, cmx_rn6, cmx_rn8, cmx_rn9, correctness) %>%
-  mutate(cmx_rn7 = str_extract_all(cmx_rn7, pattern = '\\d\\.\\d*'),
-         cmx_rn5 = str_extract_all(cmx_rn5, pattern = '\\d\\.\\d*'),
-         cmx_rn6 = str_extract_all(cmx_rn6, pattern = '\\d\\.\\d*'),
-         cmx_rn8 = str_extract_all(cmx_rn8, pattern = '\\d\\.\\d*'),
-         cmx_rn9 = str_extract_all(cmx_rn9, pattern = '\\d\\.\\d*')) 
+  select(id, age, sex, condition_order, condition_visible, file_name, cmx, cmx_mean, cmx_sd, cmx_rn7) %>%
+  mutate(cmx_rn7 = str_extract_all(cmx_rn7, pattern = '\\d\\.\\d*'))
 
 rdf7 <- rdf_wide %>%
   unnest(cmx_rn7) %>%
@@ -122,29 +118,6 @@ rdf7 <- rdf_wide %>%
   mutate(ids = 1:n(),
          cmx_rn7 = as.numeric(cmx_rn7))
 
-rdf5 <- rdf_wide %>%
-  unnest(cmx_rn5) %>%
-  group_by(id, file_name) %>%
-  mutate(ids = 1:n(),
-         cmx_rn5 = as.numeric(cmx_rn5))
-
-rdf6 <- rdf_wide %>%
-  unnest(cmx_rn6) %>%
-  group_by(id, file_name) %>%
-  mutate(ids = 1:n(),
-         cmx_rn6 = as.numeric(cmx_rn6))
-
-rdf8 <- rdf_wide %>%
-  unnest(cmx_rn8) %>%
-  group_by(id, file_name) %>%
-  mutate(ids = 1:n(),
-         cmx_rn8 = as.numeric(cmx_rn8))
-
-rdf9 <- rdf_wide %>%
-  unnest(cmx_rn9) %>%
-  group_by(id, file_name) %>%
-  mutate(ids = 1:n(),
-         cmx_rn9 = as.numeric(cmx_rn9))
 ## Wide format data
 rdf_wide <- rdf_wide %>%
   select(id, age, sex, condition_order, condition_visible, file_name, cmx, cmx_mean, cmx_sd, correctness) 
@@ -266,17 +239,17 @@ not significant, W = 2901, p = .705.
 
 ```{r model-gamm}
 ## Create dummy variable for contrasts
-rdf9$condition0 <- as.ordered(rdf9$condition_visible)
-contrasts(rdf9$condition0) <- "contr.treatment"
+rdf9$condition0 <- as.ordered(rdf7$condition_visible)
+contrasts(rdf7$condition0) <- "contr.treatment"
 
 ## Define a generalized additive mixed model
-gamm1 <- gamm(cmx_rn9 ~ 
+gamm1 <- gamm(cmx_rn7 ~ 
                condition0 +
                s(ids, k = 6) +
                s(ids, k = 4, by = condition0),
               random = list(id =~ 1, id =~ ids),
               method = 'REML',
-              data = rdf9)
+              data = rdf7)
 
 ## Print out summary of gam model
 summary(gamm1$gam)
