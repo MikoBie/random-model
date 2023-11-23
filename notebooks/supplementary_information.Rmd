@@ -1,0 +1,478 @@
+---
+title: "Study 1"
+output:
+  bookdown::html_document2:
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+    number_sections: no
+---
+
+
+```{r setup-env, include=FALSE}
+# Globals
+ROOT <- here::here()
+HERE <- file.path(ROOT, "notebooks")
+DATA <- file.path(ROOT, "data")
+FIG <- file.path(ROOT, 'fig')
+```
+
+```{r setup, include=FALSE}
+## Load necessary packages
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+library(broom)
+library(kableExtra)
+library(mgcv)
+library(MuMIn)
+library(itsadug)
+
+## Set ggplot theme
+theme_set(theme_classic())
+COLORS <- RColorBrewer::brewer.pal(8, "Set1")
+options(
+    ggplot2.discrete.color = COLORS,
+    ggplot2.discrete.fill  = COLORS
+)
+
+## Critical value in chi-square test with Bonferoni correction for 62 comparisons.
+critical_value = 11.24123284
+```
+
+In the first study, during 15 minutes long procedure participants were asked to
+produce a binary series of 120 elements and to compare 64 pairs of 7-elements
+long binary series. They were recruited on *Prolific* and redirected to
+*pavlovia.org* where the experiment was run using custom software written in
+*JavaScript*^[It is available on GitHub under MIT License
+https://gitlab.pavlovia.org/MikoBie/rantool2]. The experiment was marked as
+desktop computers only because it required the usage of the physical keyboard
+(the procedure would not launch on mobile devices).
+
+### Procedure and design
+
+The experiment followed a factorial design with one between-subject variable –
+visibility of the previously generated elements. Participants were assigned to
+one of the two experimental conditions based on their unique *id* number from
+*Prolific*. People with odd *id* numbers entered the *visible* condition in which the
+last 7 elements of produced series were visible while others were assigned to
+the *invisible* condition in which they did not see any of the previously
+generated elements. Within each condition, half of the participants first
+completed the comparison task and afterward the generation task. For the other
+half of the subjects the procedure was reversed, they first completed the random
+series generation task and afterward the comparison task. Regardless of the
+tasks' order, in the random series production part, the software displayed a red
+square every 1.25 s for .75 s. Participants were instructed to imagine a fair
+coin toss and report the outcome by pressing either the 'comma' or 'dot' key on
+the keyboard (see Figure 2).
+
+In the comparison task, participants were asked to compare 64 pairs of
+7-elements long series of coin flips. The experiment was run in Polish, where
+heads is orzeł and tails is reszka. Therefore, the acronyms were O for heads and
+R for tails. For each couple, they had 5 seconds to decide which series is more
+random. The series differ only by the last element, for example, the displayed
+series were ORRRROR with ORRRROO. To minimize the effect of the side, we
+randomly displayed series ending with O either on the right or left side of the
+screen. Moreover, the order of the displayed series was also assigned at random.
+Therefore, there were no two participants that saw stimuli in the same order.
+
+![Figure 2. Flow chart of Study 1 design. Participants were assigned at random to either invisible or visible experimental conditions. In both conditions, they were presented with a red square every 1.25 s for 0.75 s. In the visible condition, the last seven elements of generated series were displayed on the screen. After the generation phase, in both conditions, participants compared 64 pairs of 7-elements long series of coin flips. For each couple, they had 5 seconds to decide which series is more random. The series differ only by the last digit, for example, the displayed series were ORRRROR with ORRRROO.](../fig/figure-2.png)
+
+```{r read-data, message=FALSE}
+## Read demographic data from Prolific
+ddf <- read.csv(file.path(DATA, 'study1_demographics.csv')) %>%
+  select(-X, -session_id) %>%
+  rename(id = participant_id)
+
+
+## Read data from comparison experiment
+cdf <- read.csv(file.path(DATA, 'study1_compare_df.csv')) %>%
+  group_by(id, file_name) %>%
+  summarise(correctness = sum(correctness),
+            len = n()) %>%
+  ungroup() %>%
+  mutate(correctness = correctness/len)
+
+## Read data from random series production experiment
+rdf_wide <- read.csv(file.path(DATA, 'study1_random_cmx.csv')) %>%
+  rename('id' = X0,
+         'age' = X1,
+         'sex' = X2,
+         'condition_order' = X3,
+         'condition_visible' = X4,
+         'file_name' = X5) %>%
+  left_join(cdf) %>%
+  left_join(ddf %>% select(-age), by = 'id') %>%
+  filter(status == 'APPROVED') %>%
+  filter(time_taken > 454) %>%
+  filter(time_taken < 901) %>%
+  mutate(condition_visible = as.factor(condition_visible),
+         condition_order = as.factor(condition_order)) %>%
+  distinct(id, .keep_all = TRUE)
+
+## Count average counts for experiemental data
+rdf_counts <- rdf_wide %>%
+  select(id, condition_visible, starts_with('X'), -X) %>%
+  group_by(condition_visible) %>%
+  filter(X0.1 < 100) %>%
+  summarise(across(starts_with('X'), ~ mean(.x, na.rm = TRUE))) %>%
+  rename('X0' = 'X0.1',
+         'X1' = 'X1.1')
+
+## Count average counts for simulated data
+rdf_sim <- read.csv(file.path(DATA, 'study1_random_counts.csv')) %>%
+  select(-X) %>%
+  summarise(across(starts_with('X'), ~ mean(.x, na.rm = TRUE))) %>%
+  mutate(condition_visible = 'random') %>%
+  bind_rows(rdf_counts) %>%
+  pivot_longer(cols = X0:X11111, names_to = 'seq', values_to = 'count') %>%
+  pivot_wider(names_from = 'condition_visible', values_from = 'count') %>%
+  mutate(visible_cen = visible - random, 
+         invisible_cen = invisible - random) %>%
+  pivot_longer(col = visible_cen:invisible_cen,
+               names_to = 'condition', 
+               values_to = 'freq_cen') %>%
+  mutate(seq = sub(pattern = 'X', replacement = '', seq),
+         condition = sub(pattern = '_cen', replacement = '', condition))
+  
+
+## Transform random series production data into long format
+rdf_wide <- rdf_wide %>%
+  select(id, age, sex, condition_order, condition_visible, file_name, cmx, cmx_mean, cmx_sd, cmx_rn5,cmx_rn6,cmx_rn8,cmx_rn9, correctness) %>%
+  mutate(cmx_rn5 = str_extract_all(cmx_rn5, pattern = '\\d\\.\\d*'),
+         cmx_rn6 = str_extract_all(cmx_rn6, pattern = '\\d\\.\\d*'),
+         cmx_rn8 = str_extract_all(cmx_rn8, pattern = '\\d\\.\\d*'),
+         cmx_rn9 = str_extract_all(cmx_rn9, pattern = '\\d\\.\\d*'))
+
+## Rolling window of length 5
+rdf5 <- rdf_wide %>%
+  unnest(cmx_rn5) %>%
+  group_by(id, file_name) %>%
+  mutate(ids = 1:n(),
+         cmx_rn5 = as.numeric(cmx_rn5))
+
+## Rolling window of length 6
+rdf6 <- rdf_wide %>%
+  unnest(cmx_rn6) %>%
+  group_by(id, file_name) %>%
+  mutate(ids = 1:n(),
+         cmx_rn6 = as.numeric(cmx_rn6))
+
+## Rolling window of lenght 8
+rdf8 <- rdf_wide %>%
+  unnest(cmx_rn8) %>%
+  group_by(id, file_name) %>%
+  mutate(ids = 1:n(),
+         cmx_rn8 = as.numeric(cmx_rn8))
+
+## Rolling window of length 9
+rdf9 <- rdf_wide %>%
+  unnest(cmx_rn9) %>%
+  group_by(id, file_name) %>%
+  mutate(ids = 1:n(),
+         cmx_rn9 = as.numeric(cmx_rn9))
+```
+
+## Counts
+
+```{r counts}
+
+chisq_df <- rdf_sim %>%
+  select(seq, random, invisible, visible) %>%
+  distinct(seq, .keep_all = TRUE) %>% 
+  mutate(chisq_invisible = ((random - invisible)^2)/random,
+         chisq_visible = ((random - visible)^2)/random) %>%
+  filter(chisq_invisible > critical_value | chisq_visible > critical_value)
+
+chisq_df
+
+```
+
+
+```{r plot-counts}
+figure0 <- rdf_sim %>%
+  mutate(seq = factor(seq, levels = c('00000', '0000', '00001', '000', '00010', '0001', '00011','00', '00100', '0010',
+                                      '00101', '001', '00110', '0011', '00111', '0', '01000', '0100', '01001', '010',
+                                      '01010', '0101', '01011', '01', '01100', '0110', '01101', '011', '01110', '0111',
+                                      '01111', '10000', '1000', '10001', '100', '10010', '1001', '10011', '10', '10100',
+                                      '1010', '10101', '101', '10110', '1011', '10111', '1', '11000', '1100', '11001', 
+                                      '110', '11010', '1101', '11011', '11', '11100', '1110', '11101', '111', '11110',
+                                      '1111', '11111'))) %>%
+  ggplot(aes(x = seq, y = freq_cen, group = condition, fill = factor(condition, levels = c('invisible', 'visible')))) +
+  geom_col(position = 'dodge') + 
+  coord_flip() +
+  xlab('') +
+  ylab('Average Patterns Counts Relative to Random Expectation') +
+  scale_fill_discrete(name = 'Condition') +
+  theme(panel.grid.major.y = element_line(color = 'grey',
+                                          size = .1,
+                                          linetype = 2)) +
+  theme(axis.text.y = element_text(size = 6)) 
+figure0
+
+## Save the figure to the file
+figure0 %>%
+  ggsave(filename = file.path(FIG,"figure-0.png"),
+       device = "png",
+       dpi = 300,
+       height = 4.5,
+       width = 6)
+```
+
+## Rolling window of length 5
+
+```{r model-gamm}
+## Create dummy variable for contrasts
+rdf5$condition0 <- as.ordered(rdf5$condition_visible)
+contrasts(rdf5$condition0) <- "contr.treatment"
+
+## Define a generalized additive mixed model
+gamm1 <- gamm(cmx_rn5 ~ 
+               condition0 +
+               s(ids, k = 6) +
+               s(ids, k = 4, by = condition0),
+              random = list(id =~ 1, id =~ ids),
+              method = 'REML',
+              data = rdf5)
+
+## Print out summary of gam model
+summary(gamm1$gam)
+gam.check(gamm1$gam)
+concurvity(gamm1$gam)
+
+## Print out summary of lme model
+summary(gamm1$lme)
+
+## Compute conditional and marginal coefficient of terminnation for mixed models
+r.squaredGLMM(gamm1$lme)
+```
+
+```{r plot-gamm, include = TRUE, fig.cap = "Solid lines present trend curves for normalized rolling algorithmic complexity and dashed lines depict the average rolling algorithmic complexity as a function of experimental conditions. For each participant, we computed vectors of complexity estimates in a rolling window of length 5. Although the experimental task asked for the creation of 120-long series, the length still varied. Therefore, the uncertainty of both the trend curve and the average rolling algorithmic complexity increased around 113th element. Both, the non-linear (F(edf = 2.457, Ref. df = 2.457, p = .028) and linear difference (t(16279) = 2.461, p = .013) between the invisible and visible conditions, were significant. The visibility of the last 7 generated elements had the biggest impact at the beginning of the trend curves. In the invisible condition, the effect of the fatigue is much steeper than in the visible condition. Afterward, both curves stabilize at a similar level."}
+## Create data set with estimated non-linear trend and standard errors
+data_plt4 <- get_predictions(gamm1$gam,
+                        cond = list(ids = seq(min(rdf5$ids),
+                                              max(rdf5$ids),
+                                              length = 120),
+                                    condition0 = c('visible', 'invisible')),
+                        se = TRUE,
+                        print.summary = FALSE)
+  
+## Temp table with average algorithmic complexity                              
+temp <- rdf5 %>%
+  group_by(ids, condition_visible) %>%
+  summarise(cmx = mean(cmx_rn5))
+
+## Create an object for the plot of the trend curve
+figure1 <- data_plt4 %>%
+  ggplot(aes(x = ids, y = fit, color = condition0, group = condition0)) +
+  geom_line() +
+  geom_line(data = temp, aes(x = ids, y = cmx, color = condition_visible, group = condition_visible), alpha = .2, linetype = 'dashed') +
+  ylab("Normalized Algorithmic Complexity") +
+  xlab("Time step") +
+  scale_color_discrete(name = 'Last 7 elements:') +
+  xlim(0,115) +
+  theme(legend.position = 'bottom')
+
+figure1
+```
+
+## Rolling window of length 6
+
+```{r model-gamm}
+## Create dummy variable for contrasts
+rdf6$condition0 <- as.ordered(rdf6$condition_visible)
+contrasts(rdf6$condition0) <- "contr.treatment"
+
+## Define a generalized additive mixed model
+gamm1 <- gamm(cmx_rn6 ~ 
+               condition0 +
+               s(ids, k = 6) +
+               s(ids, k = 4, by = condition0),
+              random = list(id =~ 1, id =~ ids),
+              method = 'REML',
+              data = rdf6)
+
+## Print out summary of gam model
+summary(gamm1$gam)
+gam.check(gamm1$gam)
+concurvity(gamm1$gam)
+
+## Print out summary of lme model
+summary(gamm1$lme)
+
+## Compute conditional and marginal coefficient of terminnation for mixed models
+r.squaredGLMM(gamm1$lme)
+```
+
+```{r plot-gamm, include = TRUE, fig.cap = "Solid lines present trend curves for normalized rolling algorithmic complexity and dashed lines depict the average rolling algorithmic complexity as a function of experimental conditions. For each participant, we computed vectors of complexity estimates in a rolling window of length 7. Although the experimental task asked for the creation of 120-long series, the length still varied. Therefore, the uncertainty of both the trend curve and the average rolling algorithmic complexity increased around 113th element. Both, the non-linear (F(edf = 2.457, Ref. df = 2.457, p = .028) and linear difference (t(16279) = 2.461, p = .013) between the invisible and visible conditions, were significant. The visibility of the last 7 generated elements had the biggest impact at the beginning of the trend curves. In the invisible condition, the effect of the fatigue is much steeper than in the visible condition. Afterward, both curves stabilize at a similar level."}
+## Create data set with estimated non-linear trend and standard errors
+data_plt4 <- get_predictions(gamm1$gam,
+                        cond = list(ids = seq(min(rdf6$ids),
+                                              max(rdf6$ids),
+                                              length = 120),
+                                    condition0 = c('visible', 'invisible')),
+                        se = TRUE,
+                        print.summary = FALSE)
+  
+## Temp table with average algorithmic complexity                              
+temp <- rdf6 %>%
+  group_by(ids, condition_visible) %>%
+  summarise(cmx = mean(cmx_rn6))
+
+## Create an object for the plot of the trend curve
+figure1 <- data_plt4 %>%
+  ggplot(aes(x = ids, y = fit, color = condition0, group = condition0)) +
+  geom_line() +
+  geom_line(data = temp, aes(x = ids, y = cmx, color = condition_visible, group = condition_visible), alpha = .2, linetype = 'dashed') +
+  ylab("Normalized Algorithmic Complexity") +
+  xlab("Time step") +
+  scale_color_discrete(name = 'Last 7 elements:') +
+  xlim(0,115) +
+  theme(legend.position = 'bottom')
+
+figure1
+```
+## Rolling window of length 8
+
+```{r model-gamm}
+## Create dummy variable for contrasts
+rdf8$condition0 <- as.ordered(rdf8$condition_visible)
+contrasts(rdf8$condition0) <- "contr.treatment"
+
+## Define a generalized additive mixed model
+gamm1 <- gamm(cmx_rn8 ~ 
+               condition0 +
+               s(ids, k = 6) +
+               s(ids, k = 4, by = condition0),
+              random = list(id =~ 1, id =~ ids),
+              method = 'REML',
+              data = rdf8)
+
+## Print out summary of gam model
+summary(gamm1$gam)
+gam.check(gamm1$gam)
+concurvity(gamm1$gam)
+
+## Print out summary of lme model
+summary(gamm1$lme)
+
+## Compute conditional and marginal coefficient of terminnation for mixed models
+r.squaredGLMM(gamm1$lme)
+```
+
+```{r plot-gamm, include = TRUE, fig.cap = "Solid lines present trend curves for normalized rolling algorithmic complexity and dashed lines depict the average rolling algorithmic complexity as a function of experimental conditions. For each participant, we computed vectors of complexity estimates in a rolling window of length 7. Although the experimental task asked for the creation of 120-long series, the length still varied. Therefore, the uncertainty of both the trend curve and the average rolling algorithmic complexity increased around 113th element. Both, the non-linear (F(edf = 2.457, Ref. df = 2.457, p = .028) and linear difference (t(16279) = 2.461, p = .013) between the invisible and visible conditions, were significant. The visibility of the last 7 generated elements had the biggest impact at the beginning of the trend curves. In the invisible condition, the effect of the fatigue is much steeper than in the visible condition. Afterward, both curves stabilize at a similar level."}
+## Create data set with estimated non-linear trend and standard errors
+data_plt4 <- get_predictions(gamm1$gam,
+                        cond = list(ids = seq(min(rdf8$ids),
+                                              max(rdf8$ids),
+                                              length = 120),
+                                    condition0 = c('visible', 'invisible')),
+                        se = TRUE,
+                        print.summary = FALSE)
+  
+## Temp table with average algorithmic complexity                              
+temp <- rdf8 %>%
+  group_by(ids, condition_visible) %>%
+  summarise(cmx = mean(cmx_rn8))
+
+## Create an object for the plot of the trend curve
+figure1 <- data_plt4 %>%
+  ggplot(aes(x = ids, y = fit, color = condition0, group = condition0)) +
+  geom_line() +
+  geom_line(data = temp, aes(x = ids, y = cmx, color = condition_visible, group = condition_visible), alpha = .2, linetype = 'dashed') +
+  ylab("Normalized Algorithmic Complexity") +
+  xlab("Time step") +
+  scale_color_discrete(name = 'Last 7 elements:') +
+  xlim(0,115) +
+  theme(legend.position = 'bottom')
+
+figure1
+```
+```{r model-wls}
+## Compute weights
+rdf_wide <- rdf_wide %>%
+  mutate(wgt = 1/(cmx_sd)^2) %>%
+  filter(wgt != Inf & !is.na(correctness))
+
+## Define the model
+model_wls <- lm(cmx_mean ~ correctness, data = rdf_wide, weights = wgt)
+
+## Summarise the model output
+summary(model_wls)
+
+## Compute confidence intervals
+confint(model_wls)
+```
+
+## Rolling window of length 9
+
+```{r model-gamm}
+## Create dummy variable for contrasts
+rdf9$condition0 <- as.ordered(rdf9$condition_visible)
+contrasts(rdf9$condition0) <- "contr.treatment"
+
+## Define a generalized additive mixed model
+gamm1 <- gamm(cmx_rn9 ~ 
+               condition0 +
+               s(ids, k = 6) +
+               s(ids, k = 4, by = condition0),
+              random = list(id =~ 1, id =~ ids),
+              method = 'REML',
+              data = rdf9)
+
+## Print out summary of gam model
+summary(gamm1$gam)
+gam.check(gamm1$gam)
+concurvity(gamm1$gam)
+
+## Print out summary of lme model
+summary(gamm1$lme)
+
+## Compute conditional and marginal coefficient of terminnation for mixed models
+r.squaredGLMM(gamm1$lme)
+```
+
+```{r plot-gamm, include = TRUE, fig.cap = "Solid lines present trend curves for normalized rolling algorithmic complexity and dashed lines depict the average rolling algorithmic complexity as a function of experimental conditions. For each participant, we computed vectors of complexity estimates in a rolling window of length 7. Although the experimental task asked for the creation of 120-long series, the length still varied. Therefore, the uncertainty of both the trend curve and the average rolling algorithmic complexity increased around 113th element. Both, the non-linear (F(edf = 2.457, Ref. df = 2.457, p = .028) and linear difference (t(16279) = 2.461, p = .013) between the invisible and visible conditions, were significant. The visibility of the last 7 generated elements had the biggest impact at the beginning of the trend curves. In the invisible condition, the effect of the fatigue is much steeper than in the visible condition. Afterward, both curves stabilize at a similar level."}
+## Create data set with estimated non-linear trend and standard errors
+data_plt4 <- get_predictions(gamm1$gam,
+                        cond = list(ids = seq(min(rdf9$ids),
+                                              max(rdf9$ids),
+                                              length = 120),
+                                    condition0 = c('visible', 'invisible')),
+                        se = TRUE,
+                        print.summary = FALSE)
+  
+## Temp table with average algorithmic complexity                              
+temp <- rdf9 %>%
+  group_by(ids, condition_visible) %>%
+  summarise(cmx = mean(cmx_rn9))
+
+## Create an object for the plot of the trend curve
+figure1 <- data_plt4 %>%
+  ggplot(aes(x = ids, y = fit, color = condition0, group = condition0)) +
+  geom_line() +
+  geom_line(data = temp, aes(x = ids, y = cmx, color = condition_visible, group = condition_visible), alpha = .2, linetype = 'dashed') +
+  ylab("Normalized Algorithmic Complexity") +
+  xlab("Time step") +
+  scale_color_discrete(name = 'Last 7 elements:') +
+  xlim(0,115) +
+  theme(legend.position = 'bottom')
+
+figure1
+```
+```{r model-wls}
+## Compute weights
+rdf_wide <- rdf_wide %>%
+  mutate(wgt = 1/(cmx_sd)^2) %>%
+  filter(wgt != Inf & !is.na(correctness))
+
+## Define the model
+model_wls <- lm(cmx_mean ~ correctness, data = rdf_wide, weights = wgt)
+
+## Summarise the model output
+summary(model_wls)
+
+## Compute confidence intervals
+confint(model_wls)
+```
+

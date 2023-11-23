@@ -35,6 +35,7 @@ options(
     ggplot2.discrete.color = COLORS,
     ggplot2.discrete.fill  = COLORS
 )
+set.seed(2137)
 ```
 
 In the first study, during 15 minutes long procedure participants were asked to
@@ -107,10 +108,12 @@ rdf_wide <- read.csv(file.path(DATA, 'study1_random_cmx.csv')) %>%
          condition_order = as.factor(condition_order)) %>%
   distinct(id, .keep_all = TRUE)
 
+
 ## Transform random series production data into long format
 rdf_wide <- rdf_wide %>%
-  select(id, age, sex, condition_order, condition_visible, file_name, cmx, cmx_mean, cmx_sd, cmx_rn7, correctness, alternation_rate) %>%
-  mutate(cmx_rn7 = str_extract_all(cmx_rn7, pattern = '\\d\\.\\d*'))
+  select(id, age, sex, condition_order, condition_visible, file_name, cmx, cmx_mean, cmx_sd, cmx_rn7, correctness, alternation_rate, 'X0' = 'X0.1', 'X1' = 'X1.1') %>%
+  mutate(cmx_rn7 = str_extract_all(cmx_rn7, pattern = '\\d\\.\\d*'),
+         l_faster = X0 - X1)
 
 rdf7 <- rdf_wide %>%
   unnest(cmx_rn7) %>%
@@ -120,7 +123,7 @@ rdf7 <- rdf_wide %>%
 
 ## Wide format data
 rdf_wide <- rdf_wide %>%
-  select(id, age, sex, condition_order, condition_visible, file_name, cmx, cmx_mean, cmx_sd, correctness, alternation_rate) 
+  select(id, age, sex, condition_order, condition_visible, file_name, cmx, cmx_mean, cmx_sd, correctness, alternation_rate, l_faster) 
 
 ```
 
@@ -239,9 +242,11 @@ series, we also used a non-parametric test to assess the differences in the
 distributions. The Wilcoxon Rank Sum test revealed that the main difference was
 not significant, W = 2901, p = .705.
 
+
+
 ```{r model-gamm}
 ## Create dummy variable for contrasts
-rdf9$condition0 <- as.ordered(rdf7$condition_visible)
+rdf7$condition0 <- as.ordered(rdf7$condition_visible)
 contrasts(rdf7$condition0) <- "contr.treatment"
 
 ## Define a generalized additive mixed model

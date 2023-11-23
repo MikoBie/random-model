@@ -5,7 +5,7 @@ import numpy as np
 from pybdm import BDM
 from pybdm import PartitionIgnore, PartitionRecursive
 from pathlib import Path
-from collections import defaultdict
+from utils import *
 
 ## Path and global variables
 HERE = Path(__file__).absolute().parent.parent
@@ -20,69 +20,6 @@ bdm_short_8 = BDM(ndim = 1, shape = (8,), partition = PartitionRecursive, min_le
 bdm_short_9 = BDM(ndim = 1, shape = (9,), partition = PartitionRecursive, min_length = 9)
 bdm_short_5 = BDM(ndim = 1, shape = (5,), partition = PartitionRecursive, min_length = 5)
 bdm_short_6 = BDM(ndim = 1, shape = (6,), partition = PartitionRecursive, min_length = 6)
-
-# %%
-## Function to compute rolling Algorithmic Complexity
-def window_bdm(seq: np.array, bdm, k: int = 7, normalized: bool = False, step: int = 1) -> np.array:
-    """
-    It takes an array of 0s and 1s and returns an array of rolling 
-    algorithmic complexity.
-
-    Args:
-        seq (np.array): an array filled with 0s and 1s.
-        bdm (function): a function to compute Algorithmic Complexity.
-        k (int, optional): the length of the rolling window. Defaults to 7.
-        normalized (bool, optional): whether Algorithmic Complexity should be
-        normalized. Defaults to False.
-        step (int, optional): the length of the step between rolling windows. Defaults to 1.
-
-    Returns:
-        np.array : an array with the measures of rolling Algorithmic Complexity.
-    """
-    return np.array([ bdm.bdm(seq[i : (i + k)], normalized = normalized) for i in range(0,len(seq) - k, step) ])
-
-def occurrences(string, sub) -> int:
-    """
-    Returns number of occurences of a given substring in a string.
-
-    Args:
-        string (str): a string.
-        sub (str): a substring to check occurences.
-
-    Returns:
-        (int) : number of occurances of substring in string.
-    """
-    count = start = 0
-    while True:
-        start = string.find(sub, start) + 1
-        if start > 0:
-            count+=1
-        else:
-            return count
-        
-def freq_5(seq: np.array) -> dict:
-    """
-    Returns a dictionary with frequencies of u
-
-    Args:
-        seq (np.array): _description_
-
-    Returns:
-        dict: _description_
-    """
-    seq_str = ''
-    permutations = [ format(item, '#03b') for item in range(2) ]
-    permutations = [ format(item, '#04b') for item in range(4) ]
-    permutations += [ format(item, '#05b') for item in range(8) ]
-    permutations += [ format(item, '#06b') for item in range(16) ]
-    permutations += [ format(item, '#07b') for item in range(32) ]
-    for item in seq:
-        seq_str += str(item)
-    output = defaultdict(int)
-    for item in permutations:
-        temp_i = item[2:]
-        output[temp_i] = occurrences(string = seq_str, sub = temp_i)
-    return output
 
 # %%
 ## Read data 
