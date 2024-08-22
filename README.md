@@ -1,6 +1,6 @@
 # `The role of the working memory storage component in a random-like series generation`
 
-This is a repository for the manuscript on 'The role of the working memory storage component in a random-like series generation'. In two studies we investigated  In the repository, you will find data sets (raw and processed) and all scripts for data processing, analysis, and plotting the charts.
+This is a repository for the manuscript on 'The role of the working memory storage component in a random-like series generation'. In two studies we investigated  In the repository, you will find data sets (raw and processed) and all scripts for data processing, analysis, and plotting the charts. This work was supported by funds from the Polish National Science Centre (project no. 2019/35/N/HS6/04318).
 
 ## The structure of the repository
 
